@@ -1,9 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from rdkit import Chem
-from rdkit.Chem import Draw
-from rdkit.Chem import AllChem
+import rdkit
 # import py3Dmol
 from sklearn.metrics import roc_auc_score, roc_curve, auc
 import matplotlib.pyplot as plt
