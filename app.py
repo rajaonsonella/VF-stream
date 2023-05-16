@@ -87,7 +87,7 @@ if upfile1 and upfile2 is not None:
 
     st.download_button(
             label="Download CSV",
-            data=df_final,
+            data=df_final.to_csv().encode('utf-8'),
             file_name='final.csv',
             mime='text/csv',
         )
