@@ -80,7 +80,14 @@ if upfile1 and upfile2 is not None:
     try:
         df_final, upid_to_gene, gene_to_upid, pdbid_to_gene = process_csv(df, df2)
         df_final = df_final.set_index('ligand')
-        st.write("Successfully saved the processed results")
+        st.write("Successfully processed results")
+
+        st.download_button(
+            label="Download CSV",
+            data=df_final,
+            file_name='final.csv',
+            mime='text/csv',
+        )
 
     except:
         st.write("Failed to process the docking results file")
