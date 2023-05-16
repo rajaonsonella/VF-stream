@@ -82,16 +82,16 @@ if upfile1 and upfile2 is not None:
         df_final = df_final.set_index('ligand')
         st.write("Successfully processed results")
 
-        st.download_button(
+    except:
+        st.write("Failed to process the docking results file")
+
+    st.download_button(
             label="Download CSV",
             data=df_final,
             file_name='final.csv',
             mime='text/csv',
         )
-
-    except:
-        st.write("Failed to process the docking results file")
-
+    
     df2 = df_final.loc[:, df_final.columns.str.endswith('_avg')].transpose()
     df2 = df2.rename(index = lambda x: x.replace('_avg', ''))
     # df2['UniProt ID'] = [f'<a target="_blank" href="{UPLINK}{gene_to_upid[i]}/entry">{gene_to_upid[i]}</a>' for i in df2.index.values]
