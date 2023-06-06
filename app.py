@@ -141,7 +141,7 @@ if upfile1 and upfile2 is not None:
             g_list = g.split(',')
             g_list = [x.strip(' ') for x in g_list]
 
-            genre = st.radio("Input type", ('Gene name', 'UniProt ID'))
+            genre = st.radio("Input type", ('Gene Name', 'UniProt ID'))
 
             submitted = st.form_submit_button("Query")
             if submitted:
@@ -167,39 +167,44 @@ if upfile1 and upfile2 is not None:
                             txt += f'[{g}]({url}) '
                         expander1 = st.expander("UniProt links")        
                         expander1.write(txt)
-
-
                 except:
-                    st.write("Gene name not found")
+                    st.write("Gene name/UniProt ID not found")
 
     st.subheader("True targets")
     upfile = st.file_uploader("Select your ground truth target file")
     if upfile is not None:
         st.write(f"Selected the file: {upfile.name}")
+
+        with st.form("tt_form"):
+
+            genre = st.radio("Input type", ('Gene name', 'UniProt ID'))
+
+            submitted = st.form_submit_button("Query")
+            if submitted:
         
-        tmp = pd.read_csv(upfile)
-        gene_to_label = dict(zip(tmp['Gene Name'], tmp[option]))
+                tmp = pd.read_csv(upfile)
+                gene_to_label = dict(zip(tmp[genre], tmp[option]))
 
-        gt = top['Gene Name'].map(gene_to_label)
-        norm = (top['Score']-top['Score'].max())/(top['Score'].min()-top['Score'].max())
+                gt = top[genre].map(gene_to_label)
+                norm = (top['Score']-top['Score'].max())/(top['Score'].min()-top['Score'].max())
 
-        st.subheader("ROC-AUC score")
+                st.subheader("ROC-AUC score")
 
-        fpr, tpr, _ = roc_curve(gt, norm)
-        auc = auc(fpr, tpr)
+                fpr, tpr, _ = roc_curve(gt, norm)
+                auc = auc(fpr, tpr)
 
-        roc_df = pd.DataFrame({'False Positive Rate': fpr, 'True Positive Rate': tpr})
+                roc_df = pd.DataFrame({'False Positive Rate': fpr, 'True Positive Rate': tpr})
 
-        fig = plt.figure(figsize=(8, 6))
-        sns.lineplot(x='False Positive Rate', y='True Positive Rate', data=roc_df, label=f'AUC = {auc:.2f}')
-        plt.plot([0, 1], [0, 1], 'r--')
-        plt.xlim([0, 1])
-        plt.ylim([0, 1])
-        plt.title('Receiver Operating Characteristic (ROC) Curve')
-        plt.xlabel('False Positive Rate')
-        plt.ylabel('True Positive Rate')
-        plt.legend(loc='lower right')
-        st.pyplot(fig)
+                fig = plt.figure(figsize=(8, 6))
+                sns.lineplot(x='False Positive Rate', y='True Positive Rate', data=roc_df, label=f'AUC = {auc:.2f}')
+                plt.plot([0, 1], [0, 1], 'r--')
+                plt.xlim([0, 1])
+                plt.ylim([0, 1])
+                plt.title('Receiver Operating Characteristic (ROC) Curve')
+                plt.xlabel('False Positive Rate')
+                plt.ylabel('True Positive Rate')
+                plt.legend(loc='lower right')
+                st.pyplot(fig)
 
 st.title("TODO")
 "Sequence similarity -- Ligand info (?) "
