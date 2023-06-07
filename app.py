@@ -20,13 +20,10 @@ import biotite.structure.io.pdbx as pdbx
 import webbrowser
 UPLINK = "https://www.uniprot.org/uniprotkb/"
 
-
-st.title("VF-Proteome scrapwork")
-
 @st.cache_resource
 def process_csv(df, df2):
     df = df.copy()
-    cst =['ligand', 'collection_key', 'scenario', 'score_average', 'score_min', 'attr_smi', 'attr_heavy_atom_count']
+    cst =['ligand', 'collection_key', 'scenario']
     receptors = list(set(df.columns) - set(cst))
 
     upid_to_gene = dict(zip(df2['UniProtID'], df2['GeneName']))
@@ -65,17 +62,33 @@ def process_csv(df, df2):
 
     return df_final, upid_to_gene, gene_to_upid, pdbid_to_gene
 
+@st.cache_resource
+def merge_csv(csv_list):
+
+    to_drop = ['score_average', 'score_min', 'attr_smi', 'attr_heavy_atom_count']
+
+    if len(csv_list) == 1:
+        return pd.read_csv(csv_list[0])
+    else:
+        df_list = []
+        for i in range(len(csv_list)):
+            df_list.append(pd.read_csv(csv_list[i]).drop(columns=to_drop))
+        df_csv_concat = pd.concat(df_list)
+        df_csv_concat = df_csv_concat.groupby(['ligand', 'collection_key', 'scenario'], as_index=False).sum(min_count=1)
+        return df_csv_concat
+
+st.title("VF-Stream")
 
 st.title("Data loading")
-upfile1 = st.file_uploader("Select your docking result file")
+upfile1 = st.file_uploader("Select your docking result file(s)", accept_multiple_files=True)
 upfile2 = st.file_uploader("Select your UniProt mapping file")
     
-
 st.title("Results")
 
 if upfile1 and upfile2 is not None:
-    df = pd.read_csv(upfile1)
+    df = merge_csv(upfile1)
     df2 = pd.read_csv(upfile2)
+    df_final, upid_to_gene, gene_to_upid, pdbid_to_gene = process_csv(df, df2)
 
     try:
         df_final, upid_to_gene, gene_to_upid, pdbid_to_gene = process_csv(df, df2)
@@ -85,6 +98,8 @@ if upfile1 and upfile2 is not None:
     except:
         st.write("Failed to process the docking results file")
 
+    expander = st.expander("Processed results")        
+    expander.dataframe(df_final)
     st.download_button(
             label="Download CSV",
             data=df_final.to_csv().encode('utf-8'),
@@ -92,7 +107,51 @@ if upfile1 and upfile2 is not None:
             mime='text/csv',
         )
     
-    df2 = df_final.loc[:, df_final.columns.str.endswith('_avg')].transpose()
+    scenarios = list(df_final['scenario'].unique())
+    
+    #########################AVERAGE SCORE DIST#########################
+
+    st.header("Average score distribution")
+    
+    scenario_options = st.multiselect(
+    'Selected docking scenario', scenarios, scenarios[0])
+
+    if len(scenario_options) > 1:
+
+        scenario = df_final.copy().reset_index()
+        scenario['ligand'] = scenario['ligand'] + '_' + scenario['scenario']
+        scenario = scenario.set_index('ligand')
+    else:
+        scenario = df_final.copy()
+
+    scenario = scenario.loc[scenario['scenario'].isin(scenario_options)]
+
+    df2 = scenario.loc[:, scenario.columns.str.endswith('_avg')].transpose()
+    df2 = df2.rename(index = lambda x: x.replace('_avg', ''))
+    # df2['UniProt ID'] = [f'<a target="_blank" href="{UPLINK}{gene_to_upid[i]}/entry">{gene_to_upid[i]}</a>' for i in df2.index.values]
+    df2['UniProt ID'] = [gene_to_upid[i] for i in df2.index.values]
+    df2.index.name = 'Gene Name'
+
+    col_list = list(df2.columns)
+    col_list.pop(col_list.index('UniProt ID'))
+    
+    ligand_options = st.multiselect(
+    'Selected ligand ID', col_list, col_list[0])
+    
+    if len(ligand_options) != 0:
+        sns.set_style('darkgrid')
+        fig = sns.histplot(df2[ligand_options])
+        fig.set(xlabel='Binding score (kcal/mol)')
+        st.pyplot(fig.figure)
+
+    #########################LIGAND-CENTRIC ANALYSIS#########################
+
+    st.header("Ligand-centric analysis")
+    scenario_option = st.selectbox('Selected docking scenario', scenarios)
+
+    scenario = df_final.loc[df_final['scenario'] == scenario_option]
+
+    df2 = scenario.loc[:, scenario.columns.str.endswith('_avg')].transpose()
     df2 = df2.rename(index = lambda x: x.replace('_avg', ''))
     # df2['UniProt ID'] = [f'<a target="_blank" href="{UPLINK}{gene_to_upid[i]}/entry">{gene_to_upid[i]}</a>' for i in df2.index.values]
     df2['UniProt ID'] = [gene_to_upid[i] for i in df2.index.values]
@@ -101,26 +160,15 @@ if upfile1 and upfile2 is not None:
     col_list = list(df2.columns)
     col_list.pop(col_list.index('UniProt ID'))
 
-    st.header("Average score distribution")
-    options = st.multiselect(
-    'Selected ligand ID', col_list, col_list[0])
-    
-    if len(options) != 0:
-        sns.set_style('darkgrid')
-        fig = sns.histplot(df2[options])
-        fig.set(xlabel='Binding score (kcal/mol)')
-        st.pyplot(fig.figure)
-    
-    st.header("Ligand-centric analysis")
-    option = st.selectbox('Selected ligand ID', col_list)
+    ligand_option = st.selectbox('Selected ligand ID', col_list)
 
     col1, col2 = st.columns(2)
 
     with col1:
         st.subheader("Top targets")
         cutoff = st.slider('Select range', 0, len(df2.index), 5)
-        top = df2[['UniProt ID', option]].sort_values(by= [option])
-        top = top.rename(columns= {f'{option}' : 'Score'}) #Binding affinity (kcal/mol)
+        top = df2[['UniProt ID', ligand_option]].sort_values(by= [ligand_option])
+        top = top.rename(columns= {f'{ligand_option}' : 'Score'}) #Binding affinity (kcal/mol)
         top.reset_index(inplace=True)
         top.index.name = 'Rank'
         st.dataframe(top.head(cutoff), use_container_width=True)
@@ -170,44 +218,43 @@ if upfile1 and upfile2 is not None:
                 except:
                     st.write("Gene name/UniProt ID not found")
 
-    st.subheader("True targets")
+    st.subheader("True targets ranking")
     upfile = st.file_uploader("Select your ground truth target file")
     if upfile is not None:
         st.write(f"Selected the file: {upfile.name}")
 
-        with st.form("tt_form"):
+        genre = st.selectbox("True target input type", ('Gene Name', 'UniProt ID'))
 
-            genre = st.radio("Input type", ('Gene name', 'UniProt ID'))
+        try:
+            tmp = pd.read_csv(upfile)
 
-            submitted = st.form_submit_button("Query")
-            if submitted:
-        
-                tmp = pd.read_csv(upfile)
-                gene_to_label = dict(zip(tmp[genre], tmp[option]))
+            tt_list = list(tmp[genre].loc[tmp[ligand_option] == 1])
+            res = top.loc[top[genre].isin(tt_list)]
+            st.dataframe(res, use_container_width=True)
 
-                gt = top[genre].map(gene_to_label)
-                norm = (top['Score']-top['Score'].max())/(top['Score'].min()-top['Score'].max())
+            genre_to_label = dict(zip(tmp[genre], tmp[ligand_option]))
+            gt = top[genre].map(genre_to_label)
+            norm = (top['Score']-top['Score'].max())/(top['Score'].min()-top['Score'].max())
 
-                st.subheader("ROC-AUC score")
+            st.subheader("ROC-AUC score")
 
-                fpr, tpr, _ = roc_curve(gt, norm)
-                auc = auc(fpr, tpr)
+            fpr, tpr, _ = roc_curve(gt, norm)
+            auc = auc(fpr, tpr)
 
-                roc_df = pd.DataFrame({'False Positive Rate': fpr, 'True Positive Rate': tpr})
+            roc_df = pd.DataFrame({'False Positive Rate': fpr, 'True Positive Rate': tpr})
 
-                fig = plt.figure(figsize=(8, 6))
-                sns.lineplot(x='False Positive Rate', y='True Positive Rate', data=roc_df, label=f'AUC = {auc:.2f}')
-                plt.plot([0, 1], [0, 1], 'r--')
-                plt.xlim([0, 1])
-                plt.ylim([0, 1])
-                plt.title('Receiver Operating Characteristic (ROC) Curve')
-                plt.xlabel('False Positive Rate')
-                plt.ylabel('True Positive Rate')
-                plt.legend(loc='lower right')
-                st.pyplot(fig)
-
-st.title("TODO")
-"Sequence similarity -- Ligand info (?) "
+            fig = plt.figure(figsize=(8, 6))
+            sns.lineplot(x='False Positive Rate', y='True Positive Rate', data=roc_df, label=f'AUC = {auc:.2f}')
+            plt.plot([0, 1], [0, 1], 'r--')
+            plt.xlim([0, 1])
+            plt.ylim([0, 1])
+            plt.title('Receiver Operating Characteristic (ROC) Curve')
+            plt.xlabel('False Positive Rate')
+            plt.ylabel('True Positive Rate')
+            plt.legend(loc='lower right')
+            st.pyplot(fig)
+        except:
+            st.markdown(f"Failed to process the ground truth target file with input type :red[{genre}]")
 
 # -- True target module: ROC AUC (with interactive cutoff selection ?) is this done well ? Ask Alex
 
